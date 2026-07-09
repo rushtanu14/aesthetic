@@ -1,6 +1,6 @@
 # Aether Field
 
-A cinematic React and Three.js website experiment. The page has no product job; the interaction is the product.
+A cinematic React website experiment. The page has no product job; the image, motion, and interface atmosphere are the product.
 
 ## Local Setup
 
@@ -18,4 +18,4 @@ npm run lint
 npm run build
 ```
 
-The hero uses a Three.js scene with cursor-tethered light, scroll-sampled camera movement, fog particles, fractured geometry, and reduced-motion CSS fallbacks.
+The hero uses a generated obsidian-monolith still, an upscaled 3840x2160 poster asset, and a derived 10-second video loop. UI motion is layered in CSS with reduced-motion fallbacks.

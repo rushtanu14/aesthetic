@@ -10,7 +10,6 @@ import {
   Play,
   SlidersHorizontal,
 } from "@phosphor-icons/react";
-import CinematicScene from "./components/CinematicScene";
 import { controls, phases, recordings } from "./data";
 
 type HeroStyle = CSSProperties & {
@@ -21,9 +20,9 @@ type HeroStyle = CSSProperties & {
 };
 
 const sequenceItems = [
-  { label: "Lens drop", value: "0.18", icon: Camera },
-  { label: "Shard drift", value: "23", icon: DiamondsFour },
-  { label: "Cursor light", value: "live", icon: CursorClick },
+  { label: "Lens drop", value: "0.18", icon: Camera, preview: "72% 48%" },
+  { label: "Shard drift", value: "23", icon: DiamondsFour, preview: "56% 42%" },
+  { label: "Cursor light", value: "live", icon: CursorClick, preview: "84% 40%" },
 ];
 
 function useScrollProgress() {
@@ -61,6 +60,7 @@ function App() {
   const [pulseKey, setPulseKey] = useState(0);
   const progress = useScrollProgress();
   const heroRef = useRef<HTMLElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const activePhase = Math.min(phases.length - 1, Math.floor(progress * 3.2));
   const recording = recordings[activeRecording];
@@ -73,6 +73,18 @@ function App() {
     "--scroll-progress": progress.toFixed(4),
   };
   const heroControlsActive = heroVisible > 0.18;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isPlaying) {
+      void video.play();
+      return;
+    }
+
+    video.pause();
+  }, [isPlaying]);
 
   const handleEnterField = () => {
     setPulseKey((value) => value + 1);
@@ -92,16 +104,33 @@ function App() {
     <main className="site-shell">
       <section
         className={`hero ${heroExit > 0.82 ? "is-sequence" : ""}`}
+        data-pulse={pulseKey}
+        data-playing={isPlaying}
         ref={heroRef}
         style={heroStyle}
         aria-label="Aether Field"
       >
-        <CinematicScene
-          isPlaying={isPlaying}
-          pulseKey={pulseKey}
-          sceneMode={activeRecording}
-          scrollProgress={progress}
-        />
+        <div className="hero-media" aria-hidden="true">
+          <img
+            className="hero-still"
+            src="/media/aether-monolith-4k.jpg"
+            alt=""
+          />
+          <video
+            className="hero-video"
+            ref={videoRef}
+            autoPlay
+            muted
+            loop
+            playsInline
+            poster="/media/aether-monolith-poster.jpg"
+          >
+            <source src="/media/aether-monolith-loop.webm" type="video/webm" />
+            <source src="/media/aether-monolith-loop.mp4" type="video/mp4" />
+          </video>
+          <div className="hero-light-sweep" />
+          <div className="hero-depth-fog" />
+        </div>
 
         <header className="topline" aria-label="Primary">
           <a className="brand-mark" href="#field">
@@ -121,6 +150,7 @@ function App() {
         </div>
 
         <div className="hero-copy" id="field">
+          <span className="hero-kicker">FIELD STUDY 04</span>
           <h1>AETHER FIELD</h1>
           <p>A page that behaves like a camera moving through light.</p>
           <div
@@ -189,6 +219,22 @@ function App() {
         <div className="scan-progress" aria-hidden="true">
           <span />
         </div>
+
+        <div className="recording-previews" aria-label="Field recording previews">
+          {recordings.map((item, index) => (
+            <button
+              className={index === activeRecording ? "active" : ""}
+              key={item.title}
+              type="button"
+              disabled={!heroControlsActive}
+              aria-pressed={index === activeRecording}
+              onClick={() => setSceneMode(index)}
+            >
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <strong>{item.title}</strong>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="sequence-band" id="sequence" aria-label="Camera sequence">
@@ -209,6 +255,7 @@ function App() {
                 }`}
                 key={item.label}
                 type="button"
+                style={{ "--preview-position": item.preview } as CSSProperties}
                 aria-pressed={activeRecording === index}
                 onClick={() => setSceneMode(index)}
               >
