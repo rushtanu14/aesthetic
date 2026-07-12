@@ -15,7 +15,10 @@ Open `http://localhost:5173/`.
 
 ```bash
 npm run lint
+npm test
 npm run build
 ```
 
-The hero uses a generated obsidian-monolith still, an upscaled 3840x2160 poster asset, and a derived 10-second video loop. UI motion is layered in CSS with reduced-motion fallbacks.
+The hero uses a generated obsidian-monolith still, a responsive 1920px mobile derivative, and a derived 10-second video loop. Scene choices change the crop, light, atmosphere, and telemetry. UI motion is layered in CSS with a still-image reduced-motion mode.
+
+Node.js `^20.19.0` or `>=22.12.0` is required by the Vite toolchain.

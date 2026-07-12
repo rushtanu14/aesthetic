@@ -30,4 +30,10 @@ export default [
       ],
     },
   },
+  {
+    files: ["playwright.config.ts"],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 ];

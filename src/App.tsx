@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent, RefObject } from "react";
 import {
   ArrowDown,
   Camera,
@@ -16,8 +16,16 @@ type HeroStyle = CSSProperties & {
   "--hero-exit": string;
   "--hero-exit-y": string;
   "--hero-visible": string;
+  "--scene-filter": string;
+  "--scene-fog-opacity": string;
+  "--scene-fog-transform": string;
+  "--scene-light-opacity": string;
+  "--scene-light-transform": string;
+  "--scene-transform": string;
   "--scroll-progress": string;
 };
+
+type MediaState = "idle" | "playing" | "paused" | "error";
 
 const sequenceItems = [
   { label: "Lens drop", value: "0.18", icon: Camera, preview: "72% 48%" },
@@ -25,109 +33,204 @@ const sequenceItems = [
   { label: "Cursor light", value: "live", icon: CursorClick, preview: "84% 40%" },
 ];
 
-function useScrollProgress() {
+const videoSources = [
+  "/media/aether-monolith-loop.webm",
+  "/media/aether-monolith-loop.mp4",
+];
+
+const clamp = (value: number) => Math.min(1, Math.max(0, value));
+
+const getReducedMotionPreference = () =>
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function useHeroProgress(heroRef: RefObject<HTMLElement | null>) {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    let frame = 0;
-    let previousProgress = -1;
+    let frame: number | null = null;
 
     const update = () => {
-      const scrollable = document.documentElement.scrollHeight - window.innerHeight;
-      const nextProgress = scrollable > 0 ? window.scrollY / scrollable : 0;
+      frame = null;
+      const hero = heroRef.current;
+      if (!hero) return;
 
-      if (Math.abs(nextProgress - previousProgress) > 0.006) {
-        previousProgress = nextProgress;
-        setProgress(nextProgress);
-      }
+      const heroTop = hero.parentElement
+        ? hero.parentElement.getBoundingClientRect().top + window.scrollY
+        : 0;
+      const travel = Math.max(window.innerHeight * 0.95, 1);
+      const nextProgress = clamp((window.scrollY - heroTop) / travel);
 
-      frame = requestAnimationFrame(update);
+      setProgress((current) =>
+        Math.abs(nextProgress - current) < 0.001 ? current : nextProgress,
+      );
     };
 
-    frame = requestAnimationFrame(update);
+    const scheduleUpdate = () => {
+      if (frame === null) frame = requestAnimationFrame(update);
+    };
+
+    scheduleUpdate();
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
 
     return () => {
-      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+      if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [heroRef]);
 
   return progress;
 }
 
 function App() {
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(
+    getReducedMotionPreference,
+  );
+  const [isPlaying, setIsPlaying] = useState(() => !getReducedMotionPreference());
+  const [mediaState, setMediaState] = useState<MediaState>(() =>
+    getReducedMotionPreference() ? "paused" : "idle",
+  );
+  const [videoSourceIndex, setVideoSourceIndex] = useState(0);
   const [activeRecording, setActiveRecording] = useState(0);
-  const [pulseKey, setPulseKey] = useState(0);
-  const progress = useScrollProgress();
   const heroRef = useRef<HTMLElement>(null);
+  const sequenceHeadingRef = useRef<HTMLHeadingElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const progress = useHeroProgress(heroRef);
 
-  const activePhase = Math.min(phases.length - 1, Math.floor(progress * 3.2));
+  const activePhase = Math.min(phases.length - 1, Math.floor(progress * phases.length));
   const recording = recordings[activeRecording];
-  const heroExit = Math.min(1, Math.max(0, progress * 3.4));
-  const heroVisible = Math.max(0, 1 - heroExit / 0.72);
+  const heroExit = clamp((progress - 0.32) / 0.68);
+  const heroVisible = 1 - clamp((progress - 0.72) / 0.28);
   const heroStyle: HeroStyle = {
     "--hero-exit": heroExit.toFixed(3),
-    "--hero-exit-y": `${Math.round(heroExit * -52)}px`,
+    "--hero-exit-y": `${Math.round(heroExit * -44)}px`,
     "--hero-visible": heroVisible.toFixed(3),
+    "--scene-filter": recording.scene.filter,
+    "--scene-fog-opacity": recording.scene.fogOpacity,
+    "--scene-fog-transform": recording.scene.fogTransform,
+    "--scene-light-opacity": recording.scene.lightOpacity,
+    "--scene-light-transform": recording.scene.lightTransform,
+    "--scene-transform": recording.scene.transform,
     "--scroll-progress": progress.toFixed(4),
   };
   const heroControlsActive = heroVisible > 0.18;
+
+  const handleVideoFailure = useCallback(() => {
+    if (videoSourceIndex < videoSources.length - 1) {
+      setMediaState("idle");
+      setVideoSourceIndex(videoSourceIndex + 1);
+      return;
+    }
+
+    setIsPlaying(false);
+    setMediaState("error");
+  }, [videoSourceIndex]);
+
+  useEffect(() => {
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handlePreferenceChange = (event: MediaQueryListEvent) => {
+      setPrefersReducedMotion(event.matches);
+      if (event.matches) setIsPlaying(false);
+    };
+
+    motionPreference.addEventListener("change", handlePreferenceChange);
+    return () => motionPreference.removeEventListener("change", handlePreferenceChange);
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    if (isPlaying) {
-      void video.play();
+    if (prefersReducedMotion || !isPlaying) {
+      video.pause();
       return;
     }
 
-    video.pause();
-  }, [isPlaying]);
+    let cancelled = false;
+    void video.play().catch((error: DOMException) => {
+      if (cancelled || error.name === "AbortError") return;
+      handleVideoFailure();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [handleVideoFailure, isPlaying, prefersReducedMotion]);
 
   const handleEnterField = () => {
-    setPulseKey((value) => value + 1);
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    sequenceHeadingRef.current?.focus({ preventScroll: true });
     document.getElementById("sequence")?.scrollIntoView({
-      behavior: reduceMotion ? "auto" : "smooth",
+      behavior: prefersReducedMotion ? "auto" : "smooth",
       block: "start",
     });
   };
 
   const setSceneMode = (index: number) => {
     setActiveRecording(index);
-    setPulseKey((value) => value + 1);
+  };
+
+  const handleTabKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    let nextIndex: number | null = null;
+
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % recordings.length;
+    if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + recordings.length) % recordings.length;
+    }
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = recordings.length - 1;
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    setSceneMode(nextIndex);
+    document.getElementById(`recording-tab-${nextIndex}`)?.focus();
   };
 
   return (
     <main className="site-shell">
       <section
         className={`hero ${heroExit > 0.82 ? "is-sequence" : ""}`}
-        data-pulse={pulseKey}
+        data-media-state={mediaState}
         data-playing={isPlaying}
+        data-scene={recording.id}
         ref={heroRef}
         style={heroStyle}
         aria-label="Aether Field"
       >
         <div className="hero-media" aria-hidden="true">
-          <img
-            className="hero-still"
-            src="/media/aether-monolith-4k.jpg"
-            alt=""
-          />
+          <picture className="hero-still-frame">
+            <source
+              media="(max-width: 680px)"
+              srcSet="/media/aether-monolith-1920.jpg"
+            />
+            <img
+              className="hero-still"
+              src="/media/aether-monolith-4k.jpg"
+              alt=""
+            />
+          </picture>
           <video
             className="hero-video"
+            key={videoSources[videoSourceIndex]}
             ref={videoRef}
-            autoPlay
+            src={videoSources[videoSourceIndex]}
             muted
             loop
             playsInline
-            poster="/media/aether-monolith-poster.jpg"
-          >
-            <source src="/media/aether-monolith-loop.webm" type="video/webm" />
-            <source src="/media/aether-monolith-loop.mp4" type="video/mp4" />
-          </video>
+            preload="metadata"
+            onError={handleVideoFailure}
+            onPause={() => {
+              if (mediaState === "playing") setIsPlaying(false);
+              setMediaState((state) => (state === "error" ? state : "paused"));
+            }}
+            onPlay={() => {
+              setIsPlaying(true);
+              setMediaState("playing");
+            }}
+          />
           <div className="hero-light-sweep" />
           <div className="hero-depth-fog" />
         </div>
@@ -143,7 +246,7 @@ function App() {
           </nav>
         </header>
 
-        <div className="coordinate-rail" aria-hidden="true">
+        <div className="coordinate-rail" aria-hidden={!heroControlsActive}>
           <Crosshair size={18} weight="light" />
           <span>37.7749 N</span>
           <span>122.4194 W</span>
@@ -165,7 +268,7 @@ function App() {
               onClick={handleEnterField}
             >
               <span>Enter Field</span>
-              <span className="button-orbit">
+              <span className="button-orbit" aria-hidden="true">
                 <ArrowDown size={18} weight="light" />
               </span>
             </button>
@@ -177,12 +280,16 @@ function App() {
               aria-label={isPlaying ? "Pause scene motion" : "Play scene motion"}
               onClick={() => setIsPlaying((value) => !value)}
             >
-              {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+              {isPlaying ? (
+                <Pause aria-hidden="true" size={18} />
+              ) : (
+                <Play aria-hidden="true" size={18} />
+              )}
             </button>
           </div>
         </div>
 
-        <aside className="phase-rail" aria-label="Scroll phase">
+        <aside className="phase-rail" aria-hidden="true">
           {phases.map((phase, index) => {
             const Icon = phase.icon;
             return (
@@ -190,14 +297,18 @@ function App() {
                 className={`phase-step ${index === activePhase ? "active" : ""}`}
                 key={phase.label}
               >
-                <Icon size={15} weight="light" />
+                <Icon aria-hidden="true" size={15} weight="light" />
                 <span>{phase.label}</span>
               </div>
             );
           })}
         </aside>
 
-        <section className="control-island" aria-label="Camera telemetry">
+        <section
+          className="control-island"
+          aria-hidden={!heroControlsActive}
+          aria-label="Camera telemetry"
+        >
           <div className="control-globe" aria-hidden="true">
             <span />
             <span />
@@ -207,9 +318,9 @@ function App() {
               const Icon = control.icon;
               return (
                 <div className="control-row" key={control.label}>
-                  <Icon size={16} weight="light" />
+                  <Icon aria-hidden="true" size={16} weight="light" />
                   <span>{control.label}</span>
-                  <strong>{control.value}</strong>
+                  <strong>{recording.telemetry[control.key]}</strong>
                 </div>
               );
             })}
@@ -220,7 +331,11 @@ function App() {
           <span />
         </div>
 
-        <div className="recording-previews" aria-label="Field recording previews">
+        <div
+          className="recording-previews"
+          aria-hidden={!heroControlsActive}
+          aria-label="Field recording previews"
+        >
           {recordings.map((item, index) => (
             <button
               className={index === activeRecording ? "active" : ""}
@@ -239,7 +354,9 @@ function App() {
 
       <section className="sequence-band" id="sequence" aria-label="Camera sequence">
         <div className="sequence-copy">
-          <h2>Scroll shifts the camera, not the page.</h2>
+          <h2 ref={sequenceHeadingRef} tabIndex={-1}>
+            Scroll shifts the camera, not the page.
+          </h2>
           <p>
             The scene changes distance, light, and density as you move through
             it. The interface stays sparse so the atmosphere carries the work.
@@ -259,7 +376,7 @@ function App() {
                 aria-pressed={activeRecording === index}
                 onClick={() => setSceneMode(index)}
               >
-                <Icon size={24} weight="light" />
+                <Icon aria-hidden="true" size={24} weight="light" />
                 <span>{item.label}</span>
                 <strong>{item.value}</strong>
               </button>
@@ -269,7 +386,13 @@ function App() {
       </section>
 
       <section className="recordings" id="recordings" aria-label="Field recordings">
-        <div className="recording-display">
+        <div
+          className="recording-display"
+          id="recording-panel"
+          role="tabpanel"
+          tabIndex={0}
+          aria-labelledby={`recording-tab-${activeRecording}`}
+        >
           <span>{recording.tone}</span>
           <h2>{recording.title}</h2>
           <p>{recording.description}</p>
@@ -278,11 +401,15 @@ function App() {
           {recordings.map((item, index) => (
             <button
               className={index === activeRecording ? "selected" : ""}
+              id={`recording-tab-${index}`}
               key={item.title}
               role="tab"
               type="button"
+              aria-controls="recording-panel"
               aria-selected={index === activeRecording}
+              tabIndex={index === activeRecording ? 0 : -1}
               onClick={() => setSceneMode(index)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
             >
               <span>{String(index + 1).padStart(2, "0")}</span>
               {item.title}
@@ -290,7 +417,7 @@ function App() {
           ))}
         </div>
         <div className="recording-console" aria-hidden="true">
-          <SlidersHorizontal size={24} weight="light" />
+          <SlidersHorizontal aria-hidden="true" size={24} weight="light" />
           <span />
           <span />
           <span />

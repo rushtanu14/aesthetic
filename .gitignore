@@ -1,5 +1,8 @@
 node_modules/
 dist/
+.playwright-cli/
+.playwright-results/
+output/
 .DS_Store
 
 .env
