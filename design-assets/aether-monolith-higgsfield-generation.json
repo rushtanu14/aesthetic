@@ -1,0 +1,20 @@
+{
+  "provider": "Higgsfield AI",
+  "createdAt": "2026-07-12T19:39:24.065876Z",
+  "jobId": "3ebcea0a-b363-4152-a65f-afda584659f5",
+  "model": "Minimax Hailuo 2.3 Fast",
+  "jobType": "minimax_hailuo",
+  "sourceAsset": "aether-monolith-source.png",
+  "sourceUploadId": "92dbdb05-509a-47fa-a778-65067a02ae39",
+  "durationSeconds": 6,
+  "resolution": "1364x768",
+  "frameRate": 24,
+  "creditsSpent": 4,
+  "prompt": "Preserve the exact obsidian monolith, its silhouette, fractured black-glass surface, levitation height, right-of-center framing, wet reflective ground, surrounding fragments, and deep black negative space. Restrained cinematic website hero: almost imperceptible slow dolly push-in with slight lateral parallax; dust motes and low fog drift gently; warm volumetric backlight breathes subtly; specular reflections shimmer minimally. Keep the monolith rigid and physically coherent. No cuts, camera shake, fast motion, new objects, text, logos, people, morphing, melting, rotation, or zoom pulse. Dark premium sci-fi editorial grade, near-black palette with warm tungsten highlights. End close to the opening composition for smooth looping.",
+  "processing": {
+    "strategy": "Trim the first five seconds and concatenate a reversed copy without its first duplicate frame.",
+    "loopDurationSeconds": 9.958,
+    "mp4": "../public/media/aether-monolith-loop.mp4",
+    "webm": "../public/media/aether-monolith-loop.webm"
+  }
+}
