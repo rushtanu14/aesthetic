@@ -84,7 +84,7 @@ test("reduced motion starts with the still image and paused media", async ({ pag
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: "Play scene motion" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "Enable scroll motion" })).toHaveAttribute(
     "aria-pressed",
     "false",
   );
@@ -103,21 +103,74 @@ test("reduced motion starts with the still image and paused media", async ({ pag
     .toBe("none");
 });
 
+test("reduced motion does not request the scroll-scrub video assets", async ({ page }) => {
+  const mediaRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("aether-monolith-scroll-world")) {
+      mediaRequests.push(request.url());
+    }
+  });
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(250);
+
+  expect(mediaRequests).toEqual([]);
+});
+
 test("media failure produces a truthful poster-only control state", async ({ page }) => {
-  await page.route("**/aether-monolith-loop.*", (route) =>
+  await page.route("**/aether-monolith-scroll-world.*", (route) =>
     route.fulfill({ status: 404, body: "missing" }),
   );
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: "Play scene motion" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "Enable scroll motion" })).toHaveAttribute(
     "aria-pressed",
     "false",
   );
   await expect(page.locator(".hero")).toHaveAttribute("data-media-state", "error");
 });
 
-test("a WebM decode failure falls back to the MP4 loop", async ({ page }) => {
-  await page.route("**/aether-monolith-loop.webm", (route) =>
+test("hero motion starts from a blob-backed MP4 for reliable seeking", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.locator(".hero")).toHaveAttribute("data-media-state", "scrubbing");
+  await expect(page.locator("video")).toHaveAttribute(
+    "data-scrub-source",
+    "/media/aether-monolith-scroll-world.mp4",
+  );
+  await expect
+    .poll(() => page.locator("video").evaluate((video) => video.currentSrc))
+    .toMatch(/^blob:/);
+});
+
+test("scroll position scrubs the camera timeline without playing the video", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+
+  await expect
+    .poll(() => page.locator("video").evaluate((video) => video.duration))
+    .toBeGreaterThan(4);
+  await expect(page.locator(".hero")).toHaveAttribute("data-frame-ready", "false");
+
+  await page.evaluate(() => window.scrollTo(0, window.innerHeight * 0.52));
+
+  await expect(page.locator(".hero")).toHaveAttribute("data-frame-ready", "true");
+  await expect
+    .poll(() =>
+      page.locator("video").evaluate((video) => video.currentTime / video.duration),
+    )
+    .toBeGreaterThan(0.45);
+  await expect
+    .poll(() =>
+      page.locator("video").evaluate((video) => video.currentTime / video.duration),
+    )
+    .toBeLessThan(0.65);
+  await expect.poll(() => page.locator("video").evaluate((video) => video.paused)).toBe(true);
+});
+
+test("an MP4 decode failure falls back to the WebM camera leg", async ({ page }) => {
+  await page.route("**/aether-monolith-scroll-world.mp4", (route) =>
     route.fulfill({
       status: 200,
       contentType: "video/webm",
@@ -126,10 +179,14 @@ test("a WebM decode failure falls back to the MP4 loop", async ({ page }) => {
   );
   await page.goto("/");
 
-  await expect(page.locator(".hero")).toHaveAttribute("data-media-state", "playing");
+  await expect(page.locator(".hero")).toHaveAttribute("data-media-state", "scrubbing");
+  await expect(page.locator("video")).toHaveAttribute(
+    "data-scrub-source",
+    "/media/aether-monolith-scroll-world.webm",
+  );
   await expect
     .poll(() => page.locator("video").evaluate((video) => video.currentSrc))
-    .toContain("aether-monolith-loop.mp4");
+    .toMatch(/^blob:/);
 });
 
 test("recording tabs implement keyboard selection and panel relationships", async ({ page }) => {

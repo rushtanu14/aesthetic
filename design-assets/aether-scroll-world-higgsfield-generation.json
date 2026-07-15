@@ -1,0 +1,38 @@
+{
+  "provider": "Higgsfield AI",
+  "createdAt": "2026-07-15T16:43:47.596387Z",
+  "jobId": "a3a96de1-1cfc-47ea-ac60-c9082209b306",
+  "model": "Seedance 1.5 Pro",
+  "jobType": "seedance1_5",
+  "sourceAsset": "aether-monolith-source.png",
+  "sourceUploadId": "906bae2b-b323-45fd-b4e6-ad48780340be",
+  "promptFile": "aether-scroll-world-prompt.txt",
+  "durationSeconds": 4,
+  "requestedResolution": "480p",
+  "deliveredResolution": "864x496",
+  "frameRate": 24,
+  "aspectRatio": "16:9",
+  "seed": 933801,
+  "audio": false,
+  "creditsSpent": 1.2,
+  "creditsBefore": 3.85,
+  "creditsAfter": 2.65,
+  "masterSha256": "ae39afc69717c2f1e493dba4ac337f4863ab9ded403eef68266974cf28a25351",
+  "processing": {
+    "strategy": "Preserve one continuous forward leg; remove audio; sharpen lightly; encode dense keyframes for scroll seeking.",
+    "mp4": {
+      "path": "../public/media/aether-monolith-scroll-world.mp4",
+      "codec": "h264",
+      "crf": 20,
+      "gop": 8,
+      "sha256": "08ffc401257faaf410f17fa343dd4f3595f006841e2dcbf582c2ab84310db6fd"
+    },
+    "webm": {
+      "path": "../public/media/aether-monolith-scroll-world.webm",
+      "codec": "vp9",
+      "crf": 30,
+      "gop": 8,
+      "sha256": "868f9a4e7c94551486b4a28425b2c0c2182e2021ad817471007a05ca928db723"
+    }
+  }
+}

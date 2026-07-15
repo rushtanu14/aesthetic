@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, RefObject } from "react";
 import {
   ArrowDown,
@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
 } from "@phosphor-icons/react";
 import { controls, phases, recordings } from "./data";
+import { useScrollScrubVideo } from "./useScrollScrubVideo";
 
 type HeroStyle = CSSProperties & {
   "--hero-exit": string;
@@ -25,8 +26,6 @@ type HeroStyle = CSSProperties & {
   "--scroll-progress": string;
 };
 
-type MediaState = "idle" | "playing" | "paused" | "error";
-
 const sequenceItems = [
   { label: "Lens drop", value: "0.18", icon: Camera, preview: "72% 48%" },
   { label: "Shard drift", value: "23", icon: DiamondsFour, preview: "56% 42%" },
@@ -34,9 +33,9 @@ const sequenceItems = [
 ];
 
 const videoSources = [
-  "/media/aether-monolith-loop.webm",
-  "/media/aether-monolith-loop.mp4",
-];
+  "/media/aether-monolith-scroll-world.mp4",
+  "/media/aether-monolith-scroll-world.webm",
+] as const;
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
 
@@ -88,15 +87,26 @@ function App() {
     getReducedMotionPreference,
   );
   const [isPlaying, setIsPlaying] = useState(() => !getReducedMotionPreference());
-  const [mediaState, setMediaState] = useState<MediaState>(() =>
-    getReducedMotionPreference() ? "paused" : "idle",
-  );
-  const [videoSourceIndex, setVideoSourceIndex] = useState(0);
   const [activeRecording, setActiveRecording] = useState(0);
   const heroRef = useRef<HTMLElement>(null);
   const sequenceHeadingRef = useRef<HTMLHeadingElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const progress = useHeroProgress(heroRef);
+  const {
+    activeSource,
+    blobSource,
+    frameReady,
+    handleFrameReady,
+    handleLoadedMetadata,
+    handleMediaError,
+    mediaState,
+  } = useScrollScrubVideo({
+    enabled: isPlaying,
+    prefersReducedMotion,
+    progress,
+    sources: videoSources,
+    videoRef,
+  });
 
   const activePhase = Math.min(phases.length - 1, Math.floor(progress * phases.length));
   const recording = recordings[activeRecording];
@@ -116,17 +126,6 @@ function App() {
   };
   const heroControlsActive = heroVisible > 0.18;
 
-  const handleVideoFailure = useCallback(() => {
-    if (videoSourceIndex < videoSources.length - 1) {
-      setMediaState("idle");
-      setVideoSourceIndex(videoSourceIndex + 1);
-      return;
-    }
-
-    setIsPlaying(false);
-    setMediaState("error");
-  }, [videoSourceIndex]);
-
   useEffect(() => {
     const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const handlePreferenceChange = (event: MediaQueryListEvent) => {
@@ -139,24 +138,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (prefersReducedMotion || !isPlaying) {
-      video.pause();
-      return;
-    }
-
-    let cancelled = false;
-    void video.play().catch((error: DOMException) => {
-      if (cancelled || error.name === "AbortError") return;
-      handleVideoFailure();
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [handleVideoFailure, isPlaying, prefersReducedMotion]);
+    if (mediaState === "error") setIsPlaying(false);
+  }, [mediaState]);
 
   const handleEnterField = () => {
     sequenceHeadingRef.current?.focus({ preventScroll: true });
@@ -194,8 +177,10 @@ function App() {
       <section
         className={`hero ${heroExit > 0.82 ? "is-sequence" : ""}`}
         data-media-state={mediaState}
+        data-frame-ready={frameReady}
         data-playing={isPlaying}
         data-scene={recording.id}
+        data-scroll-scrub="enabled"
         ref={heroRef}
         style={heroStyle}
         aria-label="Aether Field"
@@ -214,22 +199,16 @@ function App() {
           </picture>
           <video
             className="hero-video"
-            key={videoSources[videoSourceIndex]}
+            data-scrub-source={activeSource}
+            key={blobSource ?? activeSource}
             ref={videoRef}
-            src={videoSources[videoSourceIndex]}
+            src={blobSource}
             muted
-            loop
             playsInline
-            preload="metadata"
-            onError={handleVideoFailure}
-            onPause={() => {
-              if (mediaState === "playing") setIsPlaying(false);
-              setMediaState((state) => (state === "error" ? state : "paused"));
-            }}
-            onPlay={() => {
-              setIsPlaying(true);
-              setMediaState("playing");
-            }}
+            preload="auto"
+            onError={handleMediaError}
+            onLoadedMetadata={handleLoadedMetadata}
+            onSeeked={handleFrameReady}
           />
           <div className="hero-light-sweep" />
           <div className="hero-depth-fog" />
@@ -275,9 +254,13 @@ function App() {
             <button
               className="icon-action"
               type="button"
-              disabled={!heroControlsActive}
+              disabled={
+                !heroControlsActive || prefersReducedMotion || mediaState === "error"
+              }
               aria-pressed={isPlaying}
-              aria-label={isPlaying ? "Pause scene motion" : "Play scene motion"}
+              aria-label={
+                isPlaying ? "Disable scroll motion" : "Enable scroll motion"
+              }
               onClick={() => setIsPlaying((value) => !value)}
             >
               {isPlaying ? (

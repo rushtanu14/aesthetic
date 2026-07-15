@@ -138,10 +138,11 @@ button:disabled {
 .hero-video {
   object-fit: cover;
   object-position: 58% center;
-  opacity: 0.62;
+  opacity: 1;
 }
 
 .hero[data-playing="false"] .hero-video,
+.hero[data-frame-ready="false"] .hero-video,
 .hero[data-media-state="error"] .hero-video {
   opacity: 0;
 }
